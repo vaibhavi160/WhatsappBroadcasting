@@ -1,0 +1,21 @@
+{
+  "name": "whatsapp-personal-broadcast-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Node.js dashboard for a linked WhatsApp Web session. Use only for contacts who expect your messages.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mongoose": "^9.11.4",
+    "multer": "^1.4.5-lts.2",
+    "qrcode": "^1.5.4",
+    "whatsapp-web.js": "^1.26.0",
+    "wwebjs-mongo": "^1.1.0"
+  }
+}
