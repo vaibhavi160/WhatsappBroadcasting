@@ -9,6 +9,13 @@ const fs = require('fs');
 const crypto = require('crypto');
 
 const app = express();
+const logs = [];
+function log(...a) {
+  const line = `${new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata' })}  ${a.join(' ')}`;
+  logs.push(line); if (logs.length > 150) logs.shift();
+  console.log(line);
+}
+const mb = n => Math.round(n / 1048576);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -153,12 +160,12 @@ async function buildAuth() {
   if (!mongoReady) {
     await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 15000 });
     mongoReady = true;
-    console.log('MongoDB connected — WhatsApp session is stored in the database.');
+    log('MongoDB connected — WhatsApp session is stored in the database.');
   }
   return new RemoteAuth({
     clientId: 'broadcast-desk',
     store: new MongoStore({ mongoose }),
-    backupSyncIntervalMs:  60 * 1000,
+    backupSyncIntervalMs: 60 * 1000,
     ...(process.env.WA_DATA_PATH ? { dataPath: process.env.WA_DATA_PATH } : {})
   });
 }
@@ -181,7 +188,7 @@ async function startWhatsApp() {
   let authStrategy;
   try { authStrategy = await buildAuth(); }
   catch (err) {
-    console.error('Session storage error:', err.message);
+    log('Session storage error:', err.message);
     waState = { status: 'error', qrDataUrl: null, message: `Session storage error: ${safeText(err.message, 200)}` };
     return scheduleRestart('Session storage error.');
   }
@@ -195,7 +202,18 @@ async function startWhatsApp() {
     takeoverOnConflict: true,
     takeoverTimeoutMs: 0
   });
+  const hooked = new WeakSet();
+  const hook = () => {
+    try {
+      const br = client?.pupBrowser, pg = client?.pupPage;
+      if (br && !hooked.has(br)) { hooked.add(br); br.on('disconnected', () => log('CHROME CLOSED/CRASHED (often out of memory). RSS now', mb(process.memoryUsage().rss), 'MB')); }
+      if (pg && !hooked.has(pg)) { hooked.add(pg); pg.on('error', e => log('Chrome page crashed:', e.message)); pg.on('pageerror', e => log('Page error:', String(e.message || e).slice(0, 150))); }
+    } catch {}
+  };
+  client.on('loading_screen', (pct, msg) => { hook(); log(`Loading WhatsApp Web ${pct}% ${msg || ''}`); });
+  client.on('change_state', st => log('WhatsApp state:', st));
   client.on('qr', async qr => {
+    hook(); log('QR code generated — waiting for scan');
     try {
       waState = { status: 'qr', qrDataUrl: await QRCode.toDataURL(qr), message: 'Scan this QR code with WhatsApp on your phone.' };
     } catch {
@@ -203,20 +221,22 @@ async function startWhatsApp() {
     }
   });
   client.on('authenticated', () => {
+    hook(); log('Authenticated (QR accepted)');
     waState = { status: 'connecting', qrDataUrl: null, message: 'Authenticated. Connecting…' };
   });
-  client.on('remote_session_saved', () => { health.lastSessionSave = Date.now(); console.log('Session saved to MongoDB.'); });
+  client.on('remote_session_saved', () => { health.lastSessionSave = Date.now(); log('Session saved to MongoDB.'); });
   client.on('ready', () => {
     waState = { status: 'connected', qrDataUrl: null, message: 'WhatsApp Web session connected.' };
     health.connectedAt = Date.now(); retryDelay = 5000;
-    console.log('WhatsApp client is ready.');
+    log('WhatsApp client is READY. RSS', mb(process.memoryUsage().rss), 'MB');
   });
   client.on('auth_failure', msg => {
+    log('AUTH FAILURE:', safeText(msg, 200));
     waState = { status: 'error', qrDataUrl: null, message: `Authentication failed: ${safeText(msg, 200)}` };
     scheduleRestart('Authentication failed.');
   });
   client.on('disconnected', reason => {
-    console.log('WhatsApp disconnected:', reason);
+    log('WhatsApp DISCONNECTED:', safeText(reason, 100));
     health.connectedAt = null;
     scheduleRestart(`WhatsApp disconnected (${safeText(reason, 80)}).`);
   });
@@ -229,13 +249,14 @@ async function startWhatsApp() {
     if (label) { entry.status = label; entry.detail = `WhatsApp reports: ${label.toLowerCase()}.`; entry.at = new Date().toISOString(); }
   });
   client.initialize().catch(err => {
-    console.error(err);
+    log('INIT FAILED:', safeText(err.message, 300));
     waState = { status: 'error', qrDataUrl: null, message: `Could not initialize WhatsApp Web: ${safeText(err.message, 250)}` };
     scheduleRestart('Initialization failed.');
   });
 }
 startWhatsApp();
 
+setInterval(() => log('Memory RSS', mb(process.memoryUsage().rss), 'MB, status', waState.status), 30000);
 // Watchdog: every minute confirm the session is really alive; restart it if not.
 setInterval(async () => {
   if (waState.status !== 'connected' || !client || sendBusy) return;
@@ -244,7 +265,7 @@ setInterval(async () => {
     health.lastCheck = Date.now();
     if (state !== 'CONNECTED') throw new Error(`state ${state}`);
   } catch (err) {
-    console.log('Watchdog: session unhealthy —', err.message);
+    log('Watchdog: session unhealthy —', err.message);
     scheduleRestart('Session stopped responding.');
   }
 }, 60000);
@@ -257,6 +278,15 @@ app.get('/api/status', (_req, res) => res.json({
   mode: 'unofficial-whatsapp-web',
   health: { ...health, uptimeSec: Math.round((Date.now() - health.startedAt) / 1000) }
 }));
+app.get('/api/diag', (_req, res) => {
+  const m = process.memoryUsage();
+  res.json({
+    status: waState.status, message: waState.message,
+    rssMB: mb(m.rss), heapMB: mb(m.heapUsed), uptimeSec: Math.round(process.uptime()), node: process.version,
+    mongoConfigured: !!MONGODB_URI, mongoConnected: mongoReady, sessionSecretSet: !!process.env.SESSION_SECRET,
+    chromePath: process.env.CHROME_PATH || '(default)', logs: logs.slice(-80)
+  });
+});
 app.post('/api/restart', (_req, res) => {
   if (sendBusy) return res.status(409).json({ error: 'A send batch is running. Wait until it finishes.' });
   clearTimeout(retryTimer); retryTimer = null; retryDelay = 1000;
