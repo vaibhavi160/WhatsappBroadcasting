@@ -562,11 +562,14 @@
                                     class="hidden" style="width:240px;max-width:100%;margin:12px auto 0">
                             </div>
                             <div class="actions"><button id="refreshStatus" class="btn">Refresh
-                                    connection</button><button id="restartWA" class="btn">Restart session</button></div>
+                                    connection</button><button id="restartWA" class="btn">Restart
+                                    session</button><button id="diagBtn" class="btn">Diagnostics</button></div>
                             <p class="small">On your phone, open WhatsApp → Settings (or ⋮) → Linked devices → Link a
                                 device, then scan this QR. This uses an unofficial WhatsApp Web library, not Meta's
                                 official Business API; it may stop working or cause account restrictions. Use only if
                                 you accept that risk.</p>
+                            <pre id="diagBox" class="hidden"
+                                style="margin-top:12px;max-height:260px;overflow:auto;background:#0f172a;color:#d1fae5;padding:12px;border-radius:10px;font-size:11px;line-height:1.5;white-space:pre-wrap"></pre>
                         </section>
                         <section class="card">
                             <h2>2. Import and select contacts</h2>
@@ -775,6 +778,8 @@
         $('sendOne').onclick = () => { selected.clear(); if (addNumbers()) { if (!$('message').value.trim()) { $('message').focus(); toast('Now write your message, then press Review.') } else openReview() } };
         $('logout').onclick = async () => { try { await fetch('/api/logout', { method: 'POST' }) } catch { } location.href = '/login' };
         $('restartWA').onclick = async () => { if (!confirm('Restart the WhatsApp session? Your login is kept.')) return; try { await api('/api/restart', { method: 'POST' }); toast('Restarting session…', 'ok'); setTimeout(refreshStatus, 1500) } catch (e) { toast(e.message, 'err') } };
+        async function showDiag() { const b = $('diagBox'); b.classList.remove('hidden'); b.textContent = 'Loading…'; try { const d = await api('/api/diag'); b.textContent = `status: ${d.status} — ${d.message}\nmemory: ${d.rssMB} MB   uptime: ${d.uptimeSec}s   node ${d.node}\nMongoDB configured: ${d.mongoConfigured}   connected: ${d.mongoConnected}   SESSION_SECRET set: ${d.sessionSecretSet}\n----- recent log -----\n` + (d.logs.join('\n') || '(empty)'); b.scrollTop = b.scrollHeight } catch (e) { b.textContent = 'Could not load: ' + e.message } }
+        $('diagBtn').onclick = showDiag;
         renderAll(); refreshStatus(); setInterval(() => { if (!document.hidden) refreshStatus() }, 10000); pollReport();
     </script>
 </body>
