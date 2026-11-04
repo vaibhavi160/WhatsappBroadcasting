@@ -1,19 +1,116 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Login — Broadcast Desk</title>
-<style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#101b2d;font-family:Inter,system-ui,sans-serif;color:#182235}
-.card{background:#fff;border-radius:16px;padding:28px;width:min(380px,92vw);box-shadow:0 10px 40px #0006}h1{margin:0 0 4px;font-size:20px}p{margin:0 0 18px;color:#7b8799;font-size:13px}
-input{width:100%;padding:12px;border:1px solid #dce3eb;border-radius:9px;font:inherit;outline:none}input:focus{border-color:#16825d}
-button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:9px;background:#137c59;color:#fff;font-weight:700;cursor:pointer}button:disabled{opacity:.5}
-#err{color:#b42318;font-size:12px;min-height:18px;margin-top:10px}.show{font-size:12px;color:#64748b;margin-top:8px;display:flex;gap:6px;align-items:center}.show input{width:auto}</style></head>
-<body><form class="card" id="f"><h1>◉ Broadcast Desk</h1><p>Enter the app password to continue.</p>
-<input id="pw" type="password" placeholder="Password" autocomplete="current-password" autofocus required>
-<label class="show"><input type="checkbox" id="sh"> Show password</label>
-<button id="b">Log in</button><div id="err"></div></form>
-<script>
-const $=id=>document.getElementById(id);
-$('sh').onchange=e=>$('pw').type=e.target.checked?'text':'password';
-$('f').onsubmit=async e=>{e.preventDefault();$('b').disabled=true;$('err').textContent='';
-try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('pw').value})});
-const j=await r.json().catch(()=>({}));if(r.ok)location.href='/';else{$('err').textContent=j.error||'Login failed';$('pw').select()}}
-catch{$('err').textContent='Server not reachable.'}$('b').disabled=false};
-</script></body></html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Login — Broadcast Desk</title>
+    <style>
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background: #101b2d;
+            font-family: Inter, system-ui, sans-serif;
+            color: #182235
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 28px;
+            width: min(380px, 92vw);
+            box-shadow: 0 10px 40px #0006
+        }
+
+        h1 {
+            margin: 0 0 4px;
+            font-size: 20px
+        }
+
+        p {
+            margin: 0 0 18px;
+            color: #7b8799;
+            font-size: 13px
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #dce3eb;
+            border-radius: 9px;
+            font: inherit;
+            outline: none
+        }
+
+        input:focus {
+            border-color: #16825d
+        }
+
+        button {
+            width: 100%;
+            margin-top: 12px;
+            padding: 12px;
+            border: 0;
+            border-radius: 9px;
+            background: #137c59;
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer
+        }
+
+        button:disabled {
+            opacity: .5
+        }
+
+        #err {
+            color: #b42318;
+            font-size: 12px;
+            min-height: 18px;
+            margin-top: 10px
+        }
+
+        .show {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 8px;
+            display: flex;
+            gap: 6px;
+            align-items: center
+        }
+
+        .show input {
+            width: auto
+        }
+    </style>
+</head>
+
+<body>
+    <form class="card" id="f">
+        <h1>◉ Broadcast Desk</h1>
+        <p>Enter the app password to continue.</p>
+        <input id="pw" type="password" placeholder="Password" autocomplete="current-password" autofocus required>
+        <label class="show"><input type="checkbox" id="sh"> Show password</label>
+        <button id="b">Log in</button>
+        <div id="err"></div>
+    </form>
+    <script>
+        const $ = id => document.getElementById(id);
+        $('sh').onchange = e => $('pw').type = e.target.checked ? 'text' : 'password';
+        $('f').onsubmit = async e => {
+            e.preventDefault(); $('b').disabled = true; $('err').textContent = '';
+            try {
+                const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('pw').value }) });
+                const j = await r.json().catch(() => ({})); if (r.ok) location.href = '/'; else { $('err').textContent = j.error || 'Login failed'; $('pw').select() }
+            }
+            catch { $('err').textContent = 'Server not reachable.' } $('b').disabled = false
+        };
+    </script>
+</body>
+
+</html>
