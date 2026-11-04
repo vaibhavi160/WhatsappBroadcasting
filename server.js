@@ -86,6 +86,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 let client;
 let waState = { status: 'starting', qrDataUrl: null, message: 'Starting WhatsApp Web session…' };
 let sendBusy = false;
+let lastOut = null; // last outgoing message seen by WhatsApp: { id, to, at } (we send one at a time)
 const progress = { total: 0, done: 0, current: null };
 const report = [];
 const MAX_REPORT = 2000;
@@ -241,6 +242,14 @@ async function startWhatsApp() {
     scheduleRestart(`WhatsApp disconnected (${safeText(reason, 80)}).`);
   });
   // Live delivery status: 1 = sent to server, 2 = delivered, 3 = read, 4 = played
+  // Outgoing messages as WhatsApp Web itself sees them (works even when the library's sendMessage return value breaks)
+  client.on('message_create', msg => {
+    if (!msg?.fromMe || !msg?.to || !msg?.id?.id) return;
+    lastOut = { id: msg.id.id, to: msg.to, at: Date.now() };
+    const phone = String(msg.to).split('@')[0];
+    const late = report.find(r => r.phone === phone && !r.msgId && r.status === 'Sent');
+    if (late) late.msgId = msg.id.id;
+  });
   client.on('message_ack', (msg, ack) => {
     const id = msg?.id?.id;
     const entry = id && report.find(r => r.msgId === id);
@@ -336,8 +345,28 @@ app.post('/api/send', async (req, res) => {
         }
         // sendSeen:false avoids the "markedUnread / Cannot read properties of undefined" crash
         // that newer WhatsApp Web builds trigger inside whatsapp-web.js.
-        const sent = await client.sendMessage(numberId._serialized, personalized, { sendSeen: false });
-        addReport({ name, phone, status: 'Sent', msgId: sent.id?.id, detail: 'Message sent from your WhatsApp. Waiting for delivery confirmation…' });
+        const startedAt = Date.now();
+        let sent = null, libError = null;
+        try {
+          sent = await client.sendMessage(numberId._serialized, personalized, { sendSeen: false });
+        } catch (e) {
+          // Known whatsapp-web.js bug: the message is sent, but reading WhatsApp's confirmation throws
+          // "Cannot read properties of undefined (reading 'id')". Verify via WhatsApp's own event instead.
+          if (!/reading '(id|_serialized)'|undefined/i.test(String(e.message))) throw e;
+          libError = e;
+          for (let i = 0; i < 12; i++) {
+            if (lastOut && lastOut.at >= startedAt - 500) break;
+            await new Promise(r => setTimeout(r, 300));
+          }
+        }
+        const seen = lastOut && lastOut.at >= startedAt - 500 ? lastOut : null;
+        const confirmed = !!sent || !!seen;
+        if (!confirmed) throw libError || new Error('WhatsApp did not confirm the message.');
+        addReport({
+          name, phone, status: 'Sent', msgId: sent?.id?.id || seen?.id,
+          detail: libError ? 'Message sent (confirmed by WhatsApp). Delivery ticks will update if available.' : 'Message sent from your WhatsApp. Waiting for delivery confirmation…'
+        });
+        if (libError) log('Send OK for', phone, '(library error ignored:', safeText(libError.message, 80) + ')');
         // Conservative delay between messages; this is not a guarantee against account restrictions.
         await new Promise(resolve => setTimeout(resolve, 1800));
       } catch (err) {
