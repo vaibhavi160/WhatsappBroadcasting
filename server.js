@@ -158,7 +158,7 @@ async function buildAuth() {
   return new RemoteAuth({
     clientId: 'broadcast-desk',
     store: new MongoStore({ mongoose }),
-    backupSyncIntervalMs: 5 * 60 * 1000,
+    backupSyncIntervalMs:  60 * 1000,
     ...(process.env.WA_DATA_PATH ? { dataPath: process.env.WA_DATA_PATH } : {})
   });
 }
